@@ -21,7 +21,9 @@ router.post('/run', async (req: Request, res: Response) => {
 
 router.get('/runs/:merchant_id', (req: Request, res: Response) => {
   try {
-    const { merchant_id } = req.params;
+    const merchant_id = Array.isArray(req.params.merchant_id)
+      ? req.params.merchant_id[0]
+      : req.params.merchant_id;
     const runs = getAgentRuns(merchant_id);
     res.json(runs);
   } catch (error) {
