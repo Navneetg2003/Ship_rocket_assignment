@@ -8,7 +8,7 @@ class ShiprocketConnector implements IConnector {
   private mockData: any[] | null = null;
   private authToken: string | null = null;
 
-  async authenticate(): Promise<string> {
+  async authenticate(): Promise<string | null> {
     if (this.authToken) return this.authToken;
 
     try {
@@ -25,7 +25,7 @@ class ShiprocketConnector implements IConnector {
       return this.authToken;
     } catch (error) {
       console.log('⚠ Shiprocket auth failed, falling back to mock data');
-      return '';
+      return null;
     }
   }
 
