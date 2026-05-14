@@ -1,0 +1,33 @@
+{
+  "name": "shiprocket-backend",
+  "version": "1.0.0",
+  "description": "Shiprocket E-Commerce Analytics Platform - Express + SQLite backend",
+  "main": "dist/src/server.js",
+  "scripts": {
+    "dev": "ts-node src/server.ts",
+    "start": "node dist/src/server.js",
+    "build": "tsc",
+    "seed": "ts-node src/db/seed.ts",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": ["shiprocket", "ecommerce", "analytics"],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.96.0",
+    "axios": "^1.16.1",
+    "better-sqlite3": "^12.10.0",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "uuid": "^14.0.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.8.0",
+    "nodemon": "^3.1.14",
+    "ts-node": "^10.9.2",
+    "typescript": "^6.0.3"
+  }
+}
