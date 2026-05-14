@@ -20,10 +20,21 @@ export function upsertRows(rows: UniversalRow[]): { inserted: number; updated: n
       currency = excluded.currency,
       reference_id = excluded.reference_id,
       reference_type = excluded.reference_type,
+      ndr_count = excluded.ndr_count,
+      is_ndr = excluded.is_ndr,
+      shipment_id = excluded.shipment_id,
+      tracking_url = excluded.tracking_url,
+      customer_name = excluded.customer_name,
+      customer_email = excluded.customer_email,
+      payment_method = excluded.payment_method,
       raw = excluded.raw
   `);
 
   for (const row of rows) {
+    // Pre-check: see if row exists
+    const existsStmt = db.prepare('SELECT id FROM universal_rows WHERE source = ? AND entity_id = ? AND merchant_id = ?');
+    const exists = existsStmt.get(row.source, row.entity_id, row.merchant_id) as any;
+
     const result = insertStmt.run(
       row.source,
       row.entity_id,
@@ -49,9 +60,10 @@ export function upsertRows(rows: UniversalRow[]): { inserted: number; updated: n
       JSON.stringify(row.raw)
     );
 
-    if (result.changes > 0) {
-      if (!row.id) inserted++;
-      else updated++;
+    if (exists) {
+      updated++;
+    } else {
+      inserted++;
     }
   }
 
@@ -121,7 +133,7 @@ export function getByEntityTypeAndDateRange(
 export function getAllNDRShipments(merchant_id: string): UniversalRow[] {
   const db = getDB();
   const stmt = db.prepare(
-    'SELECT * FROM universal_rows WHERE merchant_id = ? AND entity_type = "shipment" AND is_ndr = 1 ORDER BY created_at DESC'
+    'SELECT * FROM universal_rows WHERE merchant_id = ? AND entity_type = \'shipment\' AND is_ndr = 1 ORDER BY created_at DESC'
   );
   const rows = stmt.all(merchant_id) as any[];
   return rows.map(deserializeRow);

@@ -21,44 +21,49 @@ For example:
 Do not make claims without citations. If you don't have the exact number, say "I don't have this data" instead of guessing.
 Strip any uncited numbers before providing your response.`;
 
+/**
+ * Validates that every number in the text is properly cited
+ * Checks by POSITION, not by value (fixes: same number appearing twice means both must be cited)
+ */
 export function validateCitations(response: string): string {
-  // Find all numbers without citations
   const lines = response.split('\n');
   const validatedLines = [];
 
   for (const line of lines) {
-    // Check for uncited numbers
-    const citedCounts: Record<string, number> = {};
-
-    // Count cited numbers
-    const matches = line.matchAll(CITATION_PATTERN);
-    for (const match of matches) {
-      // Extract numbers from cited sections
-      const cited = match[0];
-      const numbers = cited.matchAll(NUMBER_PATTERN);
-      for (const num of numbers) {
-        citedCounts[num[1]] = (citedCounts[num[1]] || 0) + 1;
-      }
+    // Find all cited regions: [source:...]....[/source]
+    const citedRanges: Array<[number, number]> = [];
+    let match;
+    const citationRegex = /\[source:[^\]]+\][^\[]*\[\/source\]/g;
+    while ((match = citationRegex.exec(line)) !== null) {
+      citedRanges.push([match.index, match.index + match[0].length]);
     }
 
-    // Find uncited numbers
-    const uncitedNumbers = new Set<string>();
-    const numberMatches = line.matchAll(NUMBER_PATTERN);
-    for (const match of numberMatches) {
-      const num = match[1];
-      if (!citedCounts[num] || citedCounts[num] === 0) {
-        uncitedNumbers.add(num);
-      }
-    }
+    // Check if a position is inside a cited range
+    const isPositionCited = (pos: number): boolean => {
+      return citedRanges.some(([start, end]) => pos >= start && pos < end);
+    };
 
-    // Strip uncited numbers if any
+    // Find all numbers and check if cited
     let validatedLine = line;
-    if (uncitedNumbers.size > 0) {
-      for (const uncitedNum of uncitedNumbers) {
-        // Only remove if not part of a cited section
-        const regex = new RegExp(`(?<!\\[source:[^\\]]*?)\\b${uncitedNum}\\b(?![^\\[]*\\[\/source\\])`, 'g');
-        validatedLine = validatedLine.replace(regex, '[UNCITED]');
+    let offset = 0;
+    const numberRegex = /\b(\d+(?:\.\d+)?)\b/g;
+    const numbersToRemove: Array<[number, number]> = [];
+
+    while ((match = numberRegex.exec(line)) !== null) {
+      const numberStart = match.index;
+      const numberEnd = match.index + match[0].length;
+
+      // Check if this specific number occurrence is cited
+      if (!isPositionCited(numberStart)) {
+        // This number is uncited, mark for removal
+        numbersToRemove.push([numberStart, numberEnd]);
       }
+    }
+
+    // Remove uncited numbers in reverse order to maintain indices
+    for (let i = numbersToRemove.length - 1; i >= 0; i--) {
+      const [start, end] = numbersToRemove[i];
+      validatedLine = validatedLine.slice(0, start) + '[UNCITED]' + validatedLine.slice(end);
     }
 
     validatedLines.push(validatedLine);

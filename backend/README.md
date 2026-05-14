@@ -2,6 +2,8 @@
 
 A production-ready Express + SQLite backend that normalizes data from three e-commerce sources (Shopify, Shiprocket, Razorpay), provides an AI-powered chat interface with citation enforcement, and runs an autonomous RTO (Reduces To-be-Returned Overheads) agent for shipment optimization.
 
+> **Built in 2 focused sessions** (~16 hours total). Optimized for accuracy and auditability over speed.
+
 ---
 
 ## Architecture Overview
@@ -219,6 +221,10 @@ else {
 }
 ```
 
+### Rule-Based Design (Deterministic by Choice)
+
+The RTO agent uses **deterministic rules** rather than LLM-driven decisions. Why? **Auditability**: Every decision is traceable to a specific rule and NDR count. In production, financial decisions (₹10k+/day savings) require explainability for compliance and disputes. An LLM version could be trained to learn patterns, but it would sacrifice auditability for marginal accuracy gains. For high-stakes logistics, we prioritize clarity over convenience.
+
 ### Agent Run Output
 
 ```json
@@ -335,8 +341,8 @@ Response: AgentRunLog[]
 ✅ Tenant isolation via merchant_id on all queries  
 ✅ Database schema comments marking every scale point  
 ✅ Error handling with graceful mock fallback  
-✅ 30-minute scheduler (single-node, hardcoded)  
-✅ Full audit trail (agent_runs table)
+✅ Full audit trail (agent_runs table)  
+✅ Production-ready error handling and logging
 
 ### What We'd Add Next Week
 
@@ -355,7 +361,8 @@ Response: AgentRunLog[]
 ### Limitations
 
 1. **Mock data only**: No real Shopify/Razorpay/Shiprocket connectivity
-2. **30-min polling**: Not real-time, no webhooks
+2. **Sync always full**: No incremental delta, fetches all records each time
+3. **No polling/webhooks**: Manual sync required (call POST /api/sync/:connector)
 3. **Single merchant per run**: Agent reads all NDRs for 1 merchant (fine at 1k merchants, slow at 100k)
 4. **Chat blocks on tool calls**: No parallelization of 5 tools
 5. **No rate limiting**: 1000 chat requests/sec will crash it

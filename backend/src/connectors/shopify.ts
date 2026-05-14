@@ -40,12 +40,12 @@ class ShopifyConnector implements IConnector {
     return this.mockData.slice(offset, offset + limit);
   }
 
-  transform(rawData: any[]): UniversalRow[] {
+  transform(rawData: any[], merchant_id?: string): UniversalRow[] {
     return rawData.map(order => ({
       source: 'shopify',
       entity_id: order.id,
       entity_type: 'order' as const,
-      merchant_id: order.merchant_id || 'default',
+      merchant_id: merchant_id || order.merchant_id || 'default',
       status: order.fulfillment_status || 'pending',
       created_at: order.created_at,
       updated_at: order.updated_at,
@@ -67,7 +67,7 @@ class ShopifyConnector implements IConnector {
   async sync(params: FetchParams): Promise<SyncResult> {
     try {
       const rawData = await this.fetch(params);
-      const rows = this.transform(rawData.map(r => ({ ...r, merchant_id: params.merchant_id })));
+      const rows = this.transform(rawData, params.merchant_id);
       const result = upsertRows(rows);
 
       return {

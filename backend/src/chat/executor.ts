@@ -101,6 +101,7 @@ export async function executeTool(
 
 function formatRow(row: any): any {
   return {
+    merchant_id: row.merchant_id,
     source: row.source,
     entity_id: row.entity_id,
     entity_type: row.entity_type,

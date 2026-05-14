@@ -63,7 +63,11 @@ export async function runChat(
     }
 
     // Process tool calls
-    const toolResults: Anthropic.Messages.MessageParam[] = [];
+    // Add assistant response with tool use (once, not per tool)
+    conversationHistory.push({
+      role: 'assistant',
+      content: response.content,
+    });
 
     for (const toolUse of toolUseBlocks) {
       if (toolUse.type !== 'tool_use') continue;
@@ -75,12 +79,6 @@ export async function runChat(
 
       try {
         const result = await executeTool(toolName, toolInput, merchant_id);
-
-        // Add assistant response with tool use
-        conversationHistory.push({
-          role: 'assistant',
-          content: response.content,
-        });
 
         // Add tool result
         conversationHistory.push({
@@ -94,11 +92,6 @@ export async function runChat(
           ],
         });
       } catch (error) {
-        conversationHistory.push({
-          role: 'assistant',
-          content: response.content,
-        });
-
         conversationHistory.push({
           role: 'user',
           content: [
