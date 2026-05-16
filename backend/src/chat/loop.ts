@@ -1,4 +1,4 @@
-import Anthropic from '@anthropic-ai/sdk';
+import Groq from 'groq-sdk';
 import { chatTools } from './tools';
 import { executeTool } from './executor';
 import { CITATION_SYSTEM_PROMPT, validateCitations, formatCitations } from './citations';
@@ -19,12 +19,17 @@ export async function runChat(
   merchant_id: string,
   messages: Message[]
 ): Promise<ChatResponse> {
-  const client = new Anthropic();
+  const client = new Groq({
+    apiKey: process.env.GROQ_API_KEY,
+  });
 
-  const conversationHistory: Anthropic.Messages.MessageParam[] = messages.map(m => ({
-    role: m.role,
-    content: m.content,
-  }));
+  const conversationHistory: Array<{ role: 'user' | 'assistant' | 'system'; content: string }> = [
+    { role: 'system', content: CITATION_SYSTEM_PROMPT },
+    ...messages.map(m => ({
+      role: m.role,
+      content: m.content,
+    })),
+  ];
 
   let turns = 0;
   const maxTurns = 5;
@@ -33,78 +38,35 @@ export async function runChat(
   while (turns < maxTurns) {
     turns++;
 
-    // Call Claude
-    const response = await client.messages.create({
-      model: 'claude-3-5-sonnet-20241022',
+    // Call Llama via Groq
+    const response = await client.chat.completions.create({
+      model: 'llama-3.1-70b-versatile',
       max_tokens: 1024,
-      system: CITATION_SYSTEM_PROMPT,
-      tools: chatTools as Anthropic.Messages.Tool[],
-      messages: conversationHistory,
+      messages: conversationHistory as any,
     });
 
-    // Check if we got a tool use
-    const toolUseBlocks = response.content.filter(b => b.type === 'tool_use');
-
-    if (toolUseBlocks.length === 0) {
-      // No tool calls, extract text response
-      const textBlocks = response.content.filter(b => b.type === 'text');
-      const finalText = textBlocks.map(b => (b as any).text).join('\n');
-
-      // Validate citations
-      const validatedText = validateCitations(finalText);
-      const formattedText = formatCitations(validatedText);
-
-      return {
-        response: formattedText,
-        citations: extractCitations(formattedText),
-        toolCalls: toolCallLog,
-        turns,
-      };
+    // Check if we got a response
+    if (!response.choices || response.choices.length === 0) {
+      break;
     }
 
-    // Process tool calls
-    // Add assistant response with tool use (once, not per tool)
-    conversationHistory.push({
-      role: 'assistant',
-      content: response.content,
-    });
+    // Extract text response
+    const finalText = response.choices[0].message?.content || '';
 
-    for (const toolUse of toolUseBlocks) {
-      if (toolUse.type !== 'tool_use') continue;
-
-      const toolName = toolUse.name;
-      const toolInput = toolUse.input as any;
-
-      toolCallLog.push(toolName);
-
-      try {
-        const result = await executeTool(toolName, toolInput, merchant_id);
-
-        // Add tool result
-        conversationHistory.push({
-          role: 'user',
-          content: [
-            {
-              type: 'tool_result',
-              tool_use_id: toolUse.id,
-              content: JSON.stringify(result, null, 2),
-            },
-          ],
-        });
-      } catch (error) {
-        conversationHistory.push({
-          role: 'user',
-          content: [
-            {
-              type: 'tool_result',
-              tool_use_id: toolUse.id,
-              content: `Error: ${(error as Error).message}`,
-              is_error: true,
-            },
-          ],
-        });
-      }
+    if (!finalText) {
+      break;
     }
+
+    // Validate citations
+    const validatedText = validateCitations(finalText);
+    const formattedText = formatCitations(validatedText);
+
+    return {
+      response: formattedText,
+      citations: extractCitations(formattedText),
+      toolCalls: toolCallLog,
+      turns,
+    };
   }
 
   // Max turns reached

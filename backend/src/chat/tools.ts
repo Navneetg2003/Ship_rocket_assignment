@@ -1,4 +1,16 @@
-import { Tool } from '@anthropic-ai/sdk/resources';
+// Tool definitions for chat system
+// Note: Groq's Llama model doesn't support tool calling like Anthropic,
+// but we keep these definitions for future tool integration or API migration
+
+export interface Tool {
+  name: string;
+  description: string;
+  input_schema: {
+    type: string;
+    properties: Record<string, any>;
+    required: string[];
+  };
+}
 
 export const chatTools: Tool[] = [
   {
