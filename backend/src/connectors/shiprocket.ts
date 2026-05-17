@@ -2,6 +2,7 @@ import axios from 'axios';
 import { IConnector, UniversalRow, SyncResult, FetchParams } from '../types';
 import { generateShiprocketShipments } from './mock/shiprocket.data';
 import { upsertRows } from '../db/queries';
+import { logger } from '../utils/logger';
 
 class ShiprocketConnector implements IConnector {
   name: 'shiprocket' = 'shiprocket';
@@ -9,8 +10,12 @@ class ShiprocketConnector implements IConnector {
   private authToken: string | null = null;
 
   async authenticate(): Promise<string | null> {
-    if (this.authToken) return this.authToken;
+    if (this.authToken) {
+      logger.debug('Using cached Shiprocket auth token');
+      return this.authToken;
+    }
 
+    logger.info('🔐 Authenticating with Shiprocket API');
     try {
       const response = await axios.post(
         'https://apiv2.shiprocket.in/v1/external/auth/login',
@@ -22,22 +27,33 @@ class ShiprocketConnector implements IConnector {
       );
 
       this.authToken = response.data.token;
+      logger.success('✓ Shiprocket authentication successful');
       return this.authToken;
     } catch (error) {
-      console.log('⚠ Shiprocket auth failed, falling back to mock data');
+      logger.error('Shiprocket authentication failed', {
+        error: error instanceof Error ? error.message : String(error),
+        hasEmail: !!process.env.SHIPROCKET_EMAIL
+      });
+      logger.warn('Falling back to mock Shiprocket data');
       return null;
     }
   }
 
   async fetch(params: FetchParams): Promise<any[]> {
+    logger.info('📦 Shiprocket fetch started', { merchant_id: params.merchant_id, limit: params.limit });
     try {
       if (!process.env.SHIPROCKET_EMAIL || process.env.SHIPROCKET_EMAIL.includes('xxx')) {
+        logger.warn('Shiprocket credentials not configured, using mock data');
         return this.useMockData(params);
       }
 
       const token = await this.authenticate();
-      if (!token) return this.useMockData(params);
+      if (!token) {
+        logger.warn('No auth token obtained, using mock data');
+        return this.useMockData(params);
+      }
 
+      logger.debug('Fetching from Shiprocket API');
       const response = await axios.get(
         'https://apiv2.shiprocket.in/v1/external/shipments',
         {
@@ -46,25 +62,34 @@ class ShiprocketConnector implements IConnector {
         }
       );
 
-      return response.data.data || [];
+      const shipments = response.data.data || [];
+      logger.success(`Shiprocket API returned ${shipments.length} shipments`);
+      return shipments;
     } catch (error) {
-      console.log('⚠ Shiprocket API failed, falling back to mock data');
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      logger.error('Shiprocket API fetch failed', { error: errorMsg });
+      logger.warn('Falling back to mock data');
       return this.useMockData(params);
     }
   }
 
   private useMockData(params: FetchParams): any[] {
+    logger.debug('Generating mock Shiprocket data', { merchant_id: params.merchant_id });
     if (!this.mockData) {
       this.mockData = generateShiprocketShipments(params.merchant_id);
+      logger.debug(`Generated ${this.mockData.length} mock shipments`);
     }
     const limit = params.limit || this.mockData.length;
     const offset = params.offset || 0;
-    return this.mockData.slice(offset, offset + limit);
+    const result = this.mockData.slice(offset, offset + limit);
+    logger.info(`Returned ${result.length} mock shipments`, { offset, limit });
+    return result;
   }
 
   transform(rawData: any[]): UniversalRow[] {
-    return rawData.map(shipment => ({
-      source: 'shiprocket',
+    logger.debug('Transforming Shiprocket data', { rowCount: rawData.length });
+    const transformed = rawData.map(shipment => ({
+      source: 'shiprocket' as const,
       entity_id: shipment.id,
       entity_type: 'shipment' as const,
       merchant_id: shipment.merchant_id || 'default',
@@ -86,13 +111,25 @@ class ShiprocketConnector implements IConnector {
         pickup_location: shipment.pickup_location,
       },
     }));
+    logger.success(`Transformed ${transformed.length} Shiprocket records`);
+    return transformed;
   }
 
   async sync(params: FetchParams): Promise<SyncResult> {
+    logger.info('🔄 Shiprocket sync started', { merchant_id: params.merchant_id });
     try {
       const rawData = await this.fetch(params);
+      logger.debug(`Fetched ${rawData.length} raw shipments`);
+      
       const rows = this.transform(rawData.map(r => ({ ...r, merchant_id: params.merchant_id })));
+      logger.debug(`Transformed into ${rows.length} universal rows`);
+      
       const result = upsertRows(rows);
+      logger.success('Shiprocket sync completed', { 
+        inserted: result.inserted,
+        updated: result.updated,
+        total: rows.length
+      });
 
       return {
         source: 'shiprocket',
@@ -102,13 +139,15 @@ class ShiprocketConnector implements IConnector {
         timestamp: new Date().toISOString(),
       };
     } catch (error) {
+      const errorMsg = (error as Error).message;
+      logger.error('Shiprocket sync failed', { error: errorMsg });
       return {
         source: 'shiprocket',
         rowsInserted: 0,
         rowsUpdated: 0,
         totalRows: 0,
         timestamp: new Date().toISOString(),
-        error: (error as Error).message,
+        error: errorMsg,
       };
     }
   }
